@@ -1,0 +1,43 @@
+# Agente de GÜIDO CAPUZZI (Hermes + Telegram) en un servidor Linux.
+# Uso (desde la raíz del repo):
+#   cp agente/deploy/env.example agente/deploy/.env   # completar secretos
+#   docker compose -f agente/deploy/docker-compose.yml --env-file agente/deploy/.env up -d --build
+# Runbook completo: agente/deploy/README.md
+#
+# Convive con el contenedor de Mercedino en el mismo VPS: nombre, volumen y bot propios.
+
+services:
+  guido:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: guido-agent
+    container_name: guido
+    restart: unless-stopped
+    command: gateway run
+    environment:
+      # Provider: OpenRouter (a diferencia de Pelusa, que usa Anthropic nativo).
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      # Quién puede hablarle al bot (ids de Telegram, separados por coma). Vacío = abierto
+      # a cualquiera, y cualquiera podría mover stock: NO dejarlo vacío.
+      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS}
+      # Hora argentina para Hermes y hooks. El server MCP no la hereda (Hermes le filtra
+      # el entorno): la fija aparte deploy/mcp_launch.sh.
+      - TZ=America/Argentina/Buenos_Aires
+    volumes:
+      # Estado de Hermes (config.yaml, sesiones, SOUL/AGENTS, memoria) — sobrevive rebuilds.
+      - guido_hermes_data:/opt/data
+      # Credenciales de Supabase SÓLO para el server MCP (las lee mcp_launch.sh). Archivo
+      # aparte y read-only: así no quedan en el entorno del gateway ni en config.yaml de Hermes.
+      - ./supabase.env:/run/guido/supabase.env:ro
+    deploy:
+      resources:
+        limits:
+          # Sin LibreOffice ni nada pesado: Hermes + un server MCP chico. 768M sobra.
+          memory: ${DOCKER_MEMORY:-768M}
+          # ⚠️ No puede superar los vCPU reales del host (Hostinger KVM 1 = 1 vCPU).
+          cpus: "${DOCKER_CPUS:-0.5}"
+
+volumes:
+  guido_hermes_data:

@@ -1,0 +1,4 @@
+# Server MCP del agente de GÜIDO (Hermes + Telegram). Separado del package.json de la web:
+# esto corre en el VPS, dentro de la imagen de Hermes, no en Vercel.
+mcp==1.28.0          # SDK oficial de MCP (FastMCP, stdio). Trae httpx, que se usa para PostgREST.
+pytest               # tests de la lógica pura (agente/tests/)
