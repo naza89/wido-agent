@@ -1,4 +1,4 @@
-# Deploy del agente de GÜIDO (Hermes + Telegram)
+# Deploy de WIDO (Hermes + Telegram)
 
 Mismo esquema que Mercedino (Pelusa): **una imagen = Hermes Agent oficial + el server MCP `guido`**.
 Pensado para correr en el **mismo VPS que Pelusa** (Hostinger KVM 1), en un contenedor aparte, con
@@ -20,28 +20,31 @@ llegan aunque el agente esté caído. Hermes sólo atiende lo que le escriben.
 ## 0. Antes (una sola vez, desde el teléfono / dashboards)
 
 1. **Crear el bot** con @BotFather → `/newbot` → guardar el token (en el vault, `Contraseñas.md`).
-2. **Tu chat_id**: escribile cualquier cosa al bot y, **antes de levantar Hermes**, abrí
-   `https://api.telegram.org/bot<TOKEN>/getUpdates` → `message.chat.id`.
-   (Con Hermes corriendo, `getUpdates` da 409: Hermes ya está consumiendo.) Si van a ser varios,
-   conviene un **grupo** con el bot adentro: su id es negativo.
-3. **Supabase**: correr `backend/sql/24_movimientos_stock_y_aviso_telegram.sql` en el SQL Editor.
+2. **Tu id de usuario**: escribile a **@userinfobot** y te devuelve tu `Id`.
+   ⚠️ **No** es el número que está antes de los `:` en el token — ese es el id **del bot**, y
+   Telegram rechaza el aviso con *"the bot can't send messages to the bot"* (pasó en el primer
+   deploy, 2026-10-05). Si van a ser varios, conviene un **grupo** con el bot adentro: su id es negativo.
+3. **Supabase**: correr la migración `24_movimientos_stock_y_aviso_telegram.sql` (vive en el repo de
+   la tienda, [`naza89/gu.idocapuzzi.com`](https://github.com/naza89/gu.idocapuzzi.com), `backend/sql/`).
 4. **Vercel** (Production): `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_IDS` (ids separados por coma) →
    redeploy. Desde ahí, cada compra pagada llega al chat.
 
 ## 1. En el VPS
 
 ```bash
-# Clonar el repo de la web (sólo se usa agente/; el build no toca la web)
-git clone git@github.com:naza89/gu.idocapuzzi.com.git /srv/guido/repo && cd /srv/guido/repo
+git clone https://github.com/naza89/wido-agent.git /srv/guido/wido-agent && cd /srv/guido/wido-agent
 
 # Secretos (dos archivos, los dos chmod 600)
-cp agente/deploy/env.example          agente/deploy/.env          && chmod 600 agente/deploy/.env
-cp agente/deploy/supabase.env.example agente/deploy/supabase.env  && chmod 600 agente/deploy/supabase.env
+cp deploy/env.example          deploy/.env          && chmod 600 deploy/.env
+cp deploy/supabase.env.example deploy/supabase.env  && chmod 600 deploy/supabase.env
+# supabase.env se monta en el contenedor y lo lee el server MCP, que corre como el usuario
+# `hermes` (uid 10000): sin este chown, un 600 de root no se puede leer adentro.
+chown 10000:10000 deploy/supabase.env
 #   .env          → OPENROUTER_API_KEY, TELEGRAM_BOT_TOKEN y TELEGRAM_ALLOWED_USERS (gateway)
 #   supabase.env  → SUPABASE_SERVICE_ROLE_KEY (sólo el server MCP; montado read-only)
 
 # Build + arranque
-docker compose -f agente/deploy/docker-compose.yml --env-file agente/deploy/.env up -d --build
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
 ```
 
 ## 2. Configurar Hermes (queda en el volumen `guido_hermes_data`)
@@ -54,13 +57,13 @@ docker exec -it guido hermes setup
 #     encuentre el bot puede mover stock.
 
 # Identidad (fuera del repo, en /opt/data)
-docker cp agente/deploy/identidad/SOUL.md   guido:/opt/data/SOUL.md
-docker cp agente/deploy/identidad/AGENTS.md guido:/opt/data/AGENTS.md
+docker cp deploy/identidad/SOUL.md   guido:/opt/data/SOUL.md
+docker cp deploy/identidad/AGENTS.md guido:/opt/data/AGENTS.md
 
 # Server MCP. Sin --env: las credenciales las toma el launcher de /run/guido/supabase.env.
 # (el `echo Y` contesta el "Enable all 7 tools?"; sin stdin lo cancela)
 echo Y | docker exec -i guido /opt/hermes/bin/hermes mcp add guido \
-  --command /srv/guido/agente/deploy/mcp_launch.sh \
+  --command /srv/guido/deploy/mcp_launch.sh \
   --connect-timeout 60
 #   → debe decir "7/7 tools enabled". Si falla: docker exec guido cat /tmp/guido_mcp_stderr.log
 
@@ -98,7 +101,7 @@ docker exec guido hermes chat -Q -q "Usá consultar_stock para la baby tee blanc
 ## Actualizar
 
 ```bash
-cd /srv/guido/repo && git pull
-docker compose -f agente/deploy/docker-compose.yml --env-file agente/deploy/.env up -d --build
+cd /srv/guido/wido-agent && git pull
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
 # Si cambió SOUL/AGENTS: repetir los docker cp + docker restart guido
 ```

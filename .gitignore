@@ -1,0 +1,9 @@
+# Secretos del deploy — viven sólo en el VPS
+.env
+deploy/supabase.env
+
+# Python
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/

@@ -46,14 +46,14 @@ class TestBusqueda:
 class TestPropuesta:
     def test_venta_manual_descuenta(self):
         p = armar_propuesta([{"sku": "rem-logo-nro-m", "cantidad": 1}], "descontar", "venta_manual", POR_SKU, nota="feria")
-        (l,) = p.lineas
-        assert (l.sku, l.delta, l.stock_actual, l.stock_resultante) == ("REM-LOGO-NRO-M", -1, 4, 3)
+        (linea,) = p.lineas
+        assert (linea.sku, linea.delta, linea.stock_actual, linea.stock_resultante) == ("REM-LOGO-NRO-M", -1, 4, 3)
         assert p.avisos == []
 
     def test_mismo_sku_repetido_se_suma(self):
         p = armar_propuesta([{"sku": "REM-LOGO-NRO-M", "cantidad": 1}, {"sku": "REM-LOGO-NRO-M", "cantidad": 2}],
                             "descontar", "venta_manual", POR_SKU)
-        assert [l.delta for l in p.lineas] == [-3]
+        assert [linea.delta for linea in p.lineas] == [-3]
 
     def test_no_deja_stock_negativo(self):
         with pytest.raises(AjusteInvalido, match="no alcanza"):

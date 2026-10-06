@@ -13,7 +13,7 @@ Variables:
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
@@ -84,7 +84,7 @@ class Supabase:
         return bool(self._get("/movimientos_stock", {"select": "id", "revierte_a": f"eq.{movimiento_id}"}))
 
     def ventas(self, dias: int = 7, limite: int = 30) -> list[dict]:
-        desde = (datetime.now(timezone.utc) - timedelta(days=dias)).isoformat()
+        desde = (datetime.now(UTC) - timedelta(days=dias)).isoformat()
         return self._get("/ordenes", {
             "select": (
                 "numero_orden,estado,pagado_at,total_centavos,tipo_envio,estado_envio,nro_envio_oca,"

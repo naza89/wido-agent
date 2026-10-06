@@ -3,7 +3,7 @@ Lógica pura del stock para el agente: búsqueda de variantes, armado de una pro
 de ajuste (dry-run) y el almacén de tokens de confirmación.
 
 Sin red ni Supabase acá — eso vive en `supabase_rest.py`. Así esto se testea solo
-(`agente/tests/test_stock.py`).
+(`tests/test_stock.py`).
 
 Regla de oro (la misma que Mercedino): nada se escribe sin que alguien diga "sí".
     preparar_ajuste_stock  →  propuesta + token   (no toca nada)
@@ -110,15 +110,15 @@ class Propuesta:
             "revierte_a": self.revierte_a,
             "lineas": [
                 {
-                    "sku": l.sku,
-                    "producto": l.producto,
-                    "colorway": l.colorway,
-                    "talle": l.talle,
-                    "cambio": l.delta,
-                    "stock_actual": l.stock_actual,
-                    "stock_resultante": l.stock_resultante,
+                    "sku": linea.sku,
+                    "producto": linea.producto,
+                    "colorway": linea.colorway,
+                    "talle": linea.talle,
+                    "cambio": linea.delta,
+                    "stock_actual": linea.stock_actual,
+                    "stock_resultante": linea.stock_resultante,
                 }
-                for l in self.lineas
+                for linea in self.lineas
             ],
             "avisos": self.avisos,
         }
@@ -149,7 +149,7 @@ def armar_propuesta(
         try:
             cantidad = int(it.get("cantidad", 0))
         except (TypeError, ValueError):
-            raise AjusteInvalido(f"cantidad inválida para {sku or '?'}")
+            raise AjusteInvalido(f"cantidad inválida para {sku or '?'}") from None
         if not sku:
             raise AjusteInvalido("falta el SKU de un item — buscalo antes con consultar_stock")
         if sku not in variantes_por_sku:

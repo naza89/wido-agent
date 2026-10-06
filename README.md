@@ -1,53 +1,91 @@
-# Agente de GÜIDO — Hermes + Telegram
+# WIDO — the operations agent for GÜIDO CAPUZZI
 
-Primera función del agente de operaciones de la marca:
+WIDO runs the day-to-day operations of [GÜIDO CAPUZZI](https://güidocapuzzi.com), an independent
+Argentine fashion brand, from a Telegram chat. It is an LLM agent ([Hermes Agent](https://github.com/NousResearch/hermes-agent))
+on top of a **deterministic tool layer** exposed as an [MCP](https://modelcontextprotocol.io) server:
+the model understands the request, the tools own every number and every write.
 
-1. **Avisos de compra** — cada orden pagada llega al chat con todos los datos (items, SKU, stock
-   que quedó, cliente, entrega, montos). Lo manda **la web**, no el agente:
-   `src/lib/telegram/notificar-compra.ts`, disparado desde el webhook de NAVE y desde la red de
-   seguridad del GET de `/api/ordenes/[id]` (que también corre el cron de conciliación).
-   Idempotente con `ordenes.notificado_telegram`; si falla, se reintenta en el próximo pase.
-2. **Stock por chat** — "vendí una remera en la feria" → el agente propone `4 → 3` y aplica
-   recién con un "sí". Cada movimiento queda registrado en `movimientos_stock` (quién, cuándo,
-   motivo, antes → después) y se puede deshacer.
+**In production since 2026-10-05**, on a Linux VPS, against the store's live Supabase database.
 
-## Qué hay acá
-
-| Ruta | Qué es |
-|---|---|
-| `guido_mcp/server.py` | Server MCP `guido` (FastMCP, stdio) — las 7 tools que usa Hermes |
-| `guido_mcp/stock.py` | Lógica pura: búsqueda de variantes, propuesta de ajuste, tokens |
-| `guido_mcp/supabase_rest.py` | Acceso a Supabase por PostgREST (httpx, service_role) |
-| `tests/` | `python -m pytest` (desde `agente/`) |
-| `deploy/` | Dockerfile, compose, launcher del MCP, identidad (SOUL/AGENTS) y runbook |
-
-La base: `backend/sql/24_movimientos_stock_y_aviso_telegram.sql` (tabla `movimientos_stock`,
-función `ajustar_stock` — atómica, nunca deja stock negativo, cerrada a anon — y el flag del aviso).
-
-## Las tools
-
-| Tool | Tipo | Qué hace |
-|---|---|---|
-| `estado` | read | Salud: Supabase, variantes, fecha/hora AR |
-| `consultar_stock(busqueda)` | read | Stock por variante + SKU, búsqueda libre sin acentos ni género |
-| `ventas_recientes(dias)` | read | Órdenes web pagadas |
-| `movimientos_recientes(limite, sku)` | read | Últimos ajustes manuales |
-| `preparar_ajuste_stock(items, operacion, motivo, nota, quien)` | **dry-run** | Propuesta antes → después + token |
-| `preparar_deshacer(movimiento_id, quien)` | **dry-run** | Reversión de un ajuste + token |
-| `confirmar_ajuste(token)` | **escribe** | Aplica vía `ajustar_stock`. Sólo tras un "sí" |
-
-## Correr local
-
-```bash
-cd agente
-pip install -r requirements.txt
-python -m pytest
-SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... python -m guido_mcp.server   # stdio
+```
+                   ┌── Telegram · Hermes Agent  (internal ops)        ← live
+MCP server `guido` ┤
+ one tool layer    └── /api/asistente · web widget (customers)       ← roadmap M5
+   ├─ consultar_stock · ventas_recientes · movimientos_recientes     ← live
+   ├─ preparar_ajuste_stock → confirmar_ajuste  (human-in-the-loop)  ← live
+   └─ buscar_conocimiento  (RAG over pgvector, with citations)       ← roadmap M3
 ```
 
-## Límite conocido
+## What it does today
 
-La vidriera **no lee el stock de Supabase**: decide "vendido" con `soldOut` en `start.js`.
-Descontar por Telegram deja la base bien, pero la web no se entera sola. Por eso el aviso de
-compra y el agente gritan cuando una variante queda en 0. La solución de fondo (hidratar
-`soldOut` desde Supabase) toca `start.js` y está pendiente de decidir.
+- **Purchase alerts.** Every paid order lands in the team chat with items, SKUs, the stock left,
+  customer, delivery method and amounts — and shouts when a variant hits zero.
+- **Stock by chat.** *"Sold a logo tee, size M, at the fair"* → WIDO asks which tee if the request is
+  ambiguous, proposes `4 → 3`, and writes **only after an explicit "yes"**. Every adjustment is
+  audited (who, when, why, before → after) and can be undone.
+- **Sales questions.** Recent paid orders, shipping state, what moved this week.
+
+## Design decisions
+
+These are the parts worth reading. Each one exists because the obvious alternative fails in a
+specific way.
+
+| Decision | Why |
+|---|---|
+| **The LLM never produces a number.** Stock, prices and sales come only from tools that query Postgres. | A model that "remembers" stock is reporting a stale number. The agent's instructions forbid answering stock without a tool call, and its built-in memory is **off** (it was injecting old facts into every prompt — learned on a sibling agent, see [Lineage](#lineage)). |
+| **Writes are two-phase: dry-run → token → confirm.** `preparar_ajuste_stock` returns the proposal and a single-use, 10-minute token; only `confirmar_ajuste(token)` writes. | The confirmation is enforced by the tool contract, not only by the prompt. A token can't be reused, and a changed request means a new proposal. |
+| **Atomic, audited writes in the database.** `ajustar_stock()` locks the row (`FOR UPDATE`), refuses negative stock, and records the movement in the same transaction. Executable by `service_role` only. | Two people selling the last unit at once can't both win, and a number that "doesn't add up" can be reconstructed. |
+| **Ambiguity is a question, not a guess.** Search returns every matching variant; without an exact SKU there is no proposal. | "Logo tee red M" matches two different products in the real catalog. |
+| **Purchase alerts bypass the agent.** The store's backend calls the Telegram Bot API directly, with its own idempotency flag that is released on failure so the next pass retries. | An alert about money can't depend on an LLM process being up. |
+| **Least privilege for the agent runtime.** Terminal, file, code-execution, browser and delegation toolsets are disabled on Telegram; the database key is mounted read-only for the MCP server alone and never stored in the agent's config. | An agent that can read files can read its own credentials. |
+
+## Repository
+
+| Path | What |
+|---|---|
+| `guido_mcp/server.py` | MCP server (FastMCP, stdio) — the 7 tools Hermes calls |
+| `guido_mcp/stock.py` | Pure logic: variant search (accent/gender-insensitive), adjustment proposals, confirmation tokens |
+| `guido_mcp/supabase_rest.py` | Supabase access over PostgREST (`httpx`, no extra SDK) |
+| `tests/` | `pytest` — runs in CI on every push |
+| `deploy/` | Dockerfile (on top of the official Hermes image), compose, MCP launcher, agent identity (`SOUL.md`, `AGENTS.md`) and the runbook |
+| `docs/ROADMAP.md` | Where this is going: evals, RAG, observability, the customer-facing assistant |
+
+The store itself (Next.js + Supabase + Vercel) lives in [`naza89/gu.idocapuzzi.com`](https://github.com/naza89/gu.idocapuzzi.com):
+the database migration behind `ajustar_stock` and the purchase-alert code are there.
+
+> Operational docs (runbook, agent identity, tool descriptions) are in Spanish — they're written
+> for the team that runs the brand, and the agent speaks Argentine Spanish.
+
+## Run it
+
+```bash
+pip install -r requirements.txt
+python -m pytest
+
+# MCP server over stdio (needs a Supabase service_role key)
+SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... python -m guido_mcp.server
+```
+
+Production deploy (Docker on a VPS, next to another Hermes agent): [`deploy/README.md`](deploy/README.md).
+
+## Roadmap
+
+| | Milestone | Status |
+|---|---|---|
+| M0 | Ops agent in production + standalone repo | ✅ |
+| M1 | **Agent evals** — deterministic: right tool, right args, never writes without a "yes"; picks the model with data | next |
+| M2 | Knowledge corpus (policies, size guide, product copy) + golden dataset of real customer questions | |
+| M3 | Retrieval as an MCP tool — pgvector, citations, hit-rate@k / MRR as a CI gate | |
+| M4 | Observability — Langfuse, one parent span per conversation, fail-open | |
+| M5 | Customer-facing assistant on the store — rate-limited endpoint, LLM-as-judge for groundedness | |
+| M6 | Prompt management where it pays off | |
+
+Details and the reasoning behind the order: [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+## Lineage
+
+WIDO reuses the patterns of **El Mercedino**, a pricing agent built for a meat-packing business
+(same stack: Hermes + MCP + a deterministic engine, the same dry-run → confirm rule). Where the two
+differ is the interesting part: Mercedino's outputs are **actions**, so its evals are deterministic;
+WIDO adds a customer-facing assistant whose output is **free text**, which is where an LLM judge
+earns its place.

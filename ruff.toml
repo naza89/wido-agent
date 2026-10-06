@@ -1,0 +1,11 @@
+# Config de lint fija en el repo: local y CI evalúan exactamente lo mismo
+# (sin esto, ruff toma la config global de la máquina de cada uno).
+line-length = 120
+target-version = "py313"
+
+[lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[lint.per-file-ignores]
+# La tabla de catálogo de los tests se lee mejor con una variante por línea.
+"tests/*" = ["E501"]

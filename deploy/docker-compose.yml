@@ -1,8 +1,8 @@
-# Agente de GÜIDO CAPUZZI (Hermes + Telegram) en un servidor Linux.
+# WIDO — agente de operaciones de GÜIDO CAPUZZI (Hermes + Telegram) en un servidor Linux.
 # Uso (desde la raíz del repo):
-#   cp agente/deploy/env.example agente/deploy/.env   # completar secretos
-#   docker compose -f agente/deploy/docker-compose.yml --env-file agente/deploy/.env up -d --build
-# Runbook completo: agente/deploy/README.md
+#   cp deploy/env.example deploy/.env   # completar secretos
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+# Runbook completo: deploy/README.md
 #
 # Convive con el contenedor de Mercedino en el mismo VPS: nombre, volumen y bot propios.
 

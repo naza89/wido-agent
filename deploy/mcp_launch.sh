@@ -3,7 +3,7 @@
 #
 # Por qué un wrapper y no `python -m` directo (lección de Mercedino):
 #   - Hermes lanza los servers stdio con cwd=/opt/hermes, que tiene sus propios paquetes.
-#     El `cd` fija el cwd en agente/ antes del -m, así se importa guido_mcp y no otra cosa.
+#     El `cd` fija el cwd en la raíz del repo (/srv/guido/agente en la imagen) antes del -m, así se importa guido_mcp y no otra cosa.
 #   - Hermes le pasa al server sólo PATH/HOME/LANG/…: ni TZ ni nada más llega solo.
 #     Las credenciales de Supabase se leen de /run/guido/supabase.env (montado read-only
 #     por el compose), así no quedan guardadas en el config.yaml de Hermes.

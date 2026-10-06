@@ -3,16 +3,16 @@ Server MCP `guido` — las tools del agente de GÜIDO CAPUZZI (Hermes + Telegram
 
 Primera función: control de stock y lectura de ventas. Los avisos de compra NO pasan
 por acá: los manda la web directo a Telegram al confirmarse el pago
-(`src/lib/telegram/notificar-compra.ts`), para que no dependan de que el agente esté vivo.
+(`src/lib/telegram/notificar-compra.ts` en naza89/gu.idocapuzzi.com), para que no dependan de que el agente esté vivo.
 
 Regla de oro (igual que Mercedino): toda escritura es dry-run → token → confirmar.
     preparar_ajuste_stock / preparar_deshacer  →  propuesta + token  (no escribe)
     confirmar_ajuste(token)                    →  aplica
 El agente NUNCA llama confirmar_ajuste sin un "sí" explícito (está en su SOUL/AGENTS).
 
-Transporte stdio: Hermes lo lanza como subproceso (ver agente/deploy/mcp_launch.sh).
+Transporte stdio: Hermes lo lanza como subproceso (ver deploy/mcp_launch.sh).
 
-    python -m guido_mcp.server          (con cwd = agente/)
+    python -m guido_mcp.server          (desde la raíz del repo)
 
 Variables: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GUIDO_TOKEN_TTL (default 600 s).
 """
@@ -68,7 +68,10 @@ def estado() -> dict:
     ahora = datetime.now(TZ_AR)
     try:
         n = len(_supabase().variantes())
-        return {"ok": True, "supabase": "ok", "variantes": n, "hoy": ahora.strftime("%Y-%m-%d"), "hora": ahora.strftime("%H:%M")}
+        return {
+            "ok": True, "supabase": "ok", "variantes": n,
+            "hoy": ahora.strftime("%Y-%m-%d"), "hora": ahora.strftime("%H:%M"),
+        }
     except ErrorSupabase as e:
         return {"ok": False, "supabase": str(e), "hoy": ahora.strftime("%Y-%m-%d")}
 
@@ -212,7 +215,9 @@ def preparar_deshacer(movimiento_id: str, quien: str = "") -> dict:
         one_of_one=bool(variante.get("one_of_one")),
     )
     if linea.stock_resultante < 0:
-        return _error(f"no se puede deshacer: hoy hay {linea.stock_actual} de {mov['sku']} y habría que restar {-delta}")
+        return _error(
+            f"no se puede deshacer: hoy hay {linea.stock_actual} de {mov['sku']} y habría que restar {-delta}"
+        )
     propuesta = Propuesta(
         motivo="correccion",
         nota=f"deshace el movimiento del {_hora_ar(mov.get('created_at'))} ({mov['motivo']})",
