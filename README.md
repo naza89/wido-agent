@@ -73,9 +73,11 @@ Production deploy (Docker on a VPS, next to another Hermes agent): [`deploy/READ
 | | Milestone | Status |
 |---|---|---|
 | M0 | Ops agent in production + standalone repo | ✅ |
-| M1 | **Agent evals** — deterministic: right tool, right args, never writes without a "yes"; picks the model with data | next |
-| M2 | Knowledge corpus (policies, size guide, product copy) + golden dataset of real customer questions | |
+| M0.5 | The agent knows the catalog — category search, product sheets, brand glossary | next |
+| M1 | **Agent evals** — deterministic: right tool, right args, never writes without a "yes"; picks the model with data | |
+| M2 | Knowledge corpus (brand, *intervenciones*, denim, product copy, sizes & measurements, policies) + golden dataset of real customer questions | |
 | M3 | Retrieval as an MCP tool — pgvector, citations, hit-rate@k / MRR as a CI gate | |
+| M3b | Meta Ads, read-only — campaign insights as a tool (live numbers never go to the vector store) | |
 | M4 | Observability — Langfuse, one parent span per conversation, fail-open | |
 | M5 | Customer-facing assistant on the store — rate-limited endpoint, LLM-as-judge for groundedness | |
 | M6 | Prompt management where it pays off | |

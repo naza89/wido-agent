@@ -32,6 +32,21 @@ file is the source of truth; the vault note points here.
 
 ---
 
+## M0.5 — Quick win: the agent knows the catalog (from real use, 2026-10-06)
+
+First real question that failed: *"¿qué intervenciones quedan disponibles?"* → the agent answered
+with its capability list. Cause: `INTERVENCIONES` is `productos.categoria`, and the variant search
+only looks at name / colorway / size / SKU. Not a RAG problem — the data is structured.
+
+- Search also matches `categoria` (and `subcategoria`).
+- `ficha_producto(sku | busqueda)` — deterministic product sheet from the catalog: category,
+  description, care, whether it's a 1/1, available sizes with stock.
+- A short **brand glossary** in `AGENTS.md` (what an *intervención* is, 1/1, the two selvedge denims)
+  so the agent maps the brand's vocabulary to tool calls. The long-form knowledge goes to M2/M3.
+- The failing conversation becomes the **first eval case** of M1.
+
+---
+
 ## M1 — Agent evals (deterministic)
 
 **Goal:** prove the ops agent behaves, and pick its model with data.
@@ -58,9 +73,13 @@ the right tool with the right arguments — and did it *not* call the tools it m
 
 **Goal:** the content the assistant will answer from, in one place.
 
-- `corpus/*.md` with frontmatter (`titulo`, `url_publica`, `seccion`, `actualizado`): terms &
-  conditions, shipping (OCA, retiro coordinado), exchanges & returns, size guide (the 9 fits from
-  `SIZE_CHARTS`), product copy.
+- `corpus/*.md` with frontmatter (`titulo`, `url_publica`, `seccion`, `actualizado`):
+  - **brand**: what GÜIDO CAPUZZI is, the *intervenciones* line (Levi's 517 reworked by hand, 1/1,
+    the exclusive leather patch), the denim (Japanese vs. Italian selvedge, regular vs. loose fit),
+    hand finishes (distressing, wax, strass, screen print);
+  - **products**: descriptions and care instructions (today inside `start.js`);
+  - **sizes and measurements**: the 9 fits from `SIZE_CHARTS`, with how to measure;
+  - **policies**: terms & conditions, shipping (OCA, retiro coordinado), exchanges & returns.
   One source, two consumers: the store renders it, the ingest chunks it.
 - `evals/rag/preguntas.jsonl` — 30–50 **real** questions from Instagram DMs / WhatsApp:
   `{pregunta, respuesta_esperada, fuente_esperada, tipo}`.
@@ -79,6 +98,20 @@ the right tool with the right arguments — and did it *not* call the tools it m
 
 **Done when:** WIDO answers "how does the regular-fit Japanese jean fit?" on Telegram with a link
 to the source, and the retrieval gate is green.
+
+## M3b — Meta Ads, read-only (requested 2026-10-06)
+
+*"¿Cómo vienen las campañas?"* — campaign numbers are **live data**, so they get a tool, not
+embeddings (same rule as stock: text in a vector store goes stale).
+
+- `campanias_meta(periodo)` → spend, impressions, reach, CTR, CPC, purchases (pixel `Purchase`),
+  ROAS, per campaign/ad set, from the Marketing API Insights endpoint.
+- Read-only by construction: a Business Manager **system-user token with `ads_read` only**, stored
+  like the Supabase key (mounted for the MCP server, never in the agent's config). No tool can edit
+  or launch a campaign.
+- The agent compares and explains; every number comes from the tool.
+- Feeds the **morning brief** (yesterday's sales + spend + ROAS in one message).
+- Owner action: create the system user and token in Business Manager.
 
 ## M4 — Observability
 
@@ -108,7 +141,8 @@ project and rejected in the other, with the reason written down.
 ## Next small step for the ops agent (not a milestone)
 
 **Morning brief** — the original WIDO idea: a scheduled daily message with yesterday's sales, low
-stock, pending shipments. It reuses existing tools; a candidate after M1.
+stock, pending shipments and (after M3b) yesterday's ad spend and ROAS. It reuses existing tools;
+a candidate after M1.
 
 ## Risks
 
