@@ -18,7 +18,7 @@ COPY --chown=hermes:hermes . /srv/guido/agente
 
 RUN python3 -m venv /srv/guido/venv \
     && /srv/guido/venv/bin/pip install --no-cache-dir -r /srv/guido/agente/requirements.txt \
-    && chmod +x /srv/guido/deploy/mcp_launch.sh \
+    && chmod +x /srv/guido/agente/deploy/mcp_launch.sh \
     && chown -R hermes:hermes /srv/guido
 
 USER hermes
