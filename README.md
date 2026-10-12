@@ -43,7 +43,8 @@ specific way.
 
 | Path | What |
 |---|---|
-| `guido_mcp/server.py` | MCP server (FastMCP, stdio) — the 7 tools Hermes calls |
+| `guido_mcp/transferencias.py` | Bank-transfer orders: dry-run proposal + client for the store's admin API (the store runs the post-payment: stock, emails) |
+| `guido_mcp/server.py` | MCP server (FastMCP, stdio) — the 10 tools Hermes calls |
 | `guido_mcp/stock.py` | Pure logic: variant search (accent/gender-insensitive), adjustment proposals, confirmation tokens |
 | `guido_mcp/supabase_rest.py` | Supabase access over PostgREST (`httpx`, no extra SDK) |
 | `tests/` | `pytest` — runs in CI on every push |

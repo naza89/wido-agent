@@ -61,11 +61,11 @@ docker cp deploy/identidad/SOUL.md   guido:/opt/data/SOUL.md
 docker cp deploy/identidad/AGENTS.md guido:/opt/data/AGENTS.md
 
 # Server MCP. Sin --env: las credenciales las toma el launcher de /run/guido/supabase.env.
-# (el `echo Y` contesta el "Enable all 7 tools?"; sin stdin lo cancela)
+# (el `echo Y` contesta el "Enable all 10 tools?"; sin stdin lo cancela)
 echo Y | docker exec -i guido /opt/hermes/bin/hermes mcp add guido \
   --command /srv/guido/deploy/mcp_launch.sh \
   --connect-timeout 60
-#   → debe decir "7/7 tools enabled". Si falla: docker exec guido cat /tmp/guido_mcp_stderr.log
+#   → debe decir "10/10 tools enabled". Si falla: docker exec guido cat /tmp/guido_mcp_stderr.log
 
 # Recortar toolsets de Telegram: el agente no necesita terminal, archivos ni ejecutar código.
 # Además de ahorrar tokens, es seguridad: la service_role está en /run/guido/supabase.env y

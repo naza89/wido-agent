@@ -96,6 +96,26 @@ class Supabase:
             "limit": str(limite),
         })
 
+    _SELECT_ORDEN_TRANSFERENCIA = (
+        "id,numero_orden,estado,created_at,total_centavos,descuento_centavos,tipo_envio,"
+        "clientes(nombre,apellido,email,telefono),items_orden(nombre_producto,color,talle,cantidad)"
+    )
+
+    def transferencias_pendientes(self, limite: int = 20) -> list[dict]:
+        return self._get("/ordenes", {
+            "select": self._SELECT_ORDEN_TRANSFERENCIA,
+            "estado": "eq.esperando_transferencia",
+            "order": "created_at.asc",
+            "limit": str(limite),
+        })
+
+    def orden_por_numero(self, numero_orden: int) -> dict | None:
+        filas = self._get("/ordenes", {
+            "select": self._SELECT_ORDEN_TRANSFERENCIA,
+            "numero_orden": f"eq.{int(numero_orden)}",
+        })
+        return filas[0] if filas else None
+
     # ── escritura ──
     def ajustar_stock(self, sku: str, delta: int, motivo: str, nota: str | None,
                       actor: str | None, revierte_a: str | None = None) -> dict:

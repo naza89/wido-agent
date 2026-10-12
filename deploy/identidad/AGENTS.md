@@ -1,6 +1,6 @@
 # Contrato de tools — server MCP `guido`
 
-Tenés conectado el server MCP `guido` con 7 tools sobre el stock y las ventas de GÜIDO CAPUZZI.
+Tenés conectado el server MCP `guido` con 10 tools sobre el stock, las ventas y las transferencias de GÜIDO CAPUZZI.
 Tu identidad y la regla de oro están en tu SOUL. Esto es el *cuándo* usar cada tool.
 
 ## Lectura (sin riesgo, no piden confirmación)
@@ -44,3 +44,29 @@ no lo resumas ni lo omitas.
 
 ⛔ **Sin tool no hay número.** Nunca digas cuánto stock hay de memoria o "por lo que vimos
 antes": el stock cambia con cada venta web. Consultá.
+
+## Transferencias (la web avisa "🏦 TRANSFERENCIA PENDIENTE #N")
+
+Cuando un cliente paga por transferencia, la orden queda **reservada** (stock sin descontar)
+hasta que alguien del equipo confirma que llegó la plata.
+
+- `transferencias_pendientes()` — las órdenes esperando transferencia: número, hace cuánto,
+  `a_transferir_ars`, cliente, items. Lectura, sin confirmación.
+- `preparar_resolucion_transferencia(numero_orden, accion, nota, quien)`
+  - `accion`: `confirmar` (llegó el comprobante y la plata) o `cancelar` (no llegó, se arrepintió).
+  - Para **confirmar**, la `nota` es obligatoria: monto, fecha y banco o n° de operación.
+    **Antes de proponer, preguntá el monto del comprobante** y comparalo con `a_transferir_ars`.
+    Si no coincide, decilo y no propongas confirmar hasta que la persona lo resuelva.
+- `confirmar_resolucion_transferencia(token)` — aplica. **Sólo tras el "sí" explícito.**
+  Al confirmar, la web descuenta el stock y le manda al cliente el mail de confirmación.
+  Si devuelve `aviso`, mostralo tal cual.
+
+Ejemplo:
+
+> Confirmar transferencia #80 — Ana Pérez
+> • 1× JEAN SELVEDGE — Índigo · talle M
+> A transferir: $246.500 (con 15% off) · comprobante: $246.500 Galicia 12/10 op 123
+> Pasa a PAGADA: se descuenta el stock y le llega el mail de confirmación.
+> ¿Confirmo?
+
+⛔ Nunca confirmes una transferencia porque "seguro llegó": sin comprobante, no.

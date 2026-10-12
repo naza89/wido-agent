@@ -1,7 +1,7 @@
 """
 Server MCP `guido` — las tools del agente de GÜIDO CAPUZZI (Hermes + Telegram).
 
-Primera función: control de stock y lectura de ventas. Los avisos de compra NO pasan
+Funciones: control de stock, lectura de ventas y confirmación de transferencias. Los avisos de compra NO pasan
 por acá: los manda la web directo a Telegram al confirmarse el pago
 (`src/lib/telegram/notificar-compra.ts` en naza89/gu.idocapuzzi.com), para que no dependan de que el agente esté vivo.
 
@@ -14,7 +14,8 @@ Transporte stdio: Hermes lo lanza como subproceso (ver deploy/mcp_launch.sh).
 
     python -m guido_mcp.server          (desde la raíz del repo)
 
-Variables: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GUIDO_TOKEN_TTL (default 600 s).
+Variables: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GUIDO_TOKEN_TTL (default 600 s),
+GUIDO_WEB_URL y GUIDO_ADMIN_TOKEN (transferencias, ver guido_mcp/transferencias.py).
 """
 from __future__ import annotations
 
@@ -23,10 +24,18 @@ import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import httpx
 from mcp.server.fastmcp import FastMCP
 
 from guido_mcp.stock import AjusteInvalido, LineaAjuste, Propuesta, TokenStore, armar_propuesta, filtrar
 from guido_mcp.supabase_rest import ErrorSupabase, Supabase
+from guido_mcp.transferencias import (
+    ErrorWeb,
+    Tienda,
+    TransferenciaInvalida,
+    armar_propuesta_transferencia,
+    resumir_orden,
+)
 
 mcp = FastMCP("guido")
 
@@ -35,7 +44,10 @@ _RE_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 _RE_SKU = re.compile(r"^[A-Z0-9/\-]{3,50}$")
 
 _tokens = TokenStore(int(os.environ.get("GUIDO_TOKEN_TTL", "600")))
+# Almacén aparte: un token de transferencia no puede terminar en confirmar_ajuste ni al revés.
+_tokens_transferencia = TokenStore(int(os.environ.get("GUIDO_TOKEN_TTL", "600")))
 _db: Supabase | None = None
+_tienda: Tienda | None = None
 
 
 def _supabase() -> Supabase:
@@ -45,6 +57,13 @@ def _supabase() -> Supabase:
     if _db is None:
         _db = Supabase()
     return _db
+
+
+def _web() -> Tienda:
+    global _tienda
+    if _tienda is None:
+        _tienda = Tienda()
+    return _tienda
 
 
 def _hora_ar(iso: str | None) -> str | None:
@@ -258,6 +277,84 @@ def confirmar_ajuste(token: str) -> dict:
         "fallidos": fallidos,
         "avisos": avisos,
         "nota": None if not fallidos else "Algunos items no se aplicaron (los demás sí). Revisá con consultar_stock.",
+    }
+
+
+# ── Transferencias (web → esperando_transferencia → el equipo confirma) ────────
+
+@mcp.tool()
+def transferencias_pendientes() -> dict:
+    """Órdenes web que el cliente eligió pagar por transferencia y todavía no se confirmaron:
+    número, hace cuánto, cuánto tiene que llegar, cliente e items. El stock de estas órdenes
+    TODAVÍA NO se descontó."""
+    try:
+        filas = _supabase().transferencias_pendientes()
+    except ErrorSupabase as e:
+        return _error(str(e))
+    pendientes = []
+    for o in filas:
+        r = resumir_orden(o)
+        r["creada"] = _hora_ar(r.get("creada"))
+        r.pop("id", None)
+        pendientes.append(r)
+    return {"ok": True, "cantidad": len(pendientes), "pendientes": pendientes}
+
+
+@mcp.tool()
+def preparar_resolucion_transferencia(numero_orden: int, accion: str, nota: str = "", quien: str = "") -> dict:
+    """Prepara confirmar o cancelar una transferencia SIN aplicarlo. Devuelve propuesta + `token`.
+
+    - `numero_orden`: el número de orden (ej. 80), de transferencias_pendientes o del aviso de Telegram.
+    - `accion`: "confirmar" (llegó la plata) o "cancelar" (no llegó / el cliente se arrepintió).
+    - `nota`: para confirmar es OBLIGATORIA: monto, fecha y banco o n° de operación del comprobante.
+    - `quien`: el nombre de quien lo pide en el chat.
+
+    Antes de proponer "confirmar", verificá con la persona que el monto del comprobante sea
+    igual a `a_transferir_ars`. Mostrale la propuesta y esperá un "sí" explícito; recién ahí
+    llamá confirmar_resolucion_transferencia(token)."""
+    try:
+        orden = _supabase().orden_por_numero(int(numero_orden))
+        propuesta = armar_propuesta_transferencia(orden, accion, nota, quien)
+    except (TransferenciaInvalida, ValueError) as e:
+        return _error(str(e))
+    except ErrorSupabase as e:
+        return _error(str(e))
+    resumen = propuesta.resumen()
+    resumen["creada"] = _hora_ar(resumen.get("creada"))
+    resumen.pop("id", None)
+    token = _tokens_transferencia.guardar(propuesta)
+    return {
+        "ok": True,
+        "token": token,
+        "vence_en_min": _tokens_transferencia.ttl // 60,
+        "propuesta": resumen,
+        "nota": "Dry-run: no se aplicó nada. Pedí confirmación y llamá confirmar_resolucion_transferencia(token).",
+    }
+
+
+@mcp.tool()
+def confirmar_resolucion_transferencia(token: str) -> dict:
+    """Aplica una propuesta de preparar_resolucion_transferencia, a través de la web (que manda
+    los mails y descuenta el stock). SOLO después de un "sí" explícito. El token sirve una vez."""
+    propuesta = _tokens_transferencia.tomar(token)
+    if propuesta is None:
+        return _error("token inexistente, ya usado o vencido — prepará la resolución de nuevo")
+    nota = propuesta.nota + (f" (por {propuesta.actor}, vía WIDO)" if propuesta.actor else " (vía WIDO)")
+    try:
+        r = _web().resolver_transferencia(propuesta.orden_id, propuesta.accion, nota.strip())
+    except (ErrorWeb, httpx.HTTPError) as e:
+        return _error(f"la web no aplicó el cambio: {e}")
+    aviso = None
+    if propuesta.accion == "confirmar" and r.get("post_pago") != "ok":
+        aviso = ("La orden quedó PAGADA, pero el post-pago (stock y mail) no corrió todavía: "
+                 "se completa solo la próxima vez que se abra la orden. Revisalo en un rato.")
+    return {
+        "ok": True,
+        "orden": r.get("numero_orden"),
+        "estado": r.get("estado"),
+        "total_ars": round((r.get("total_centavos") or 0) / 100),
+        "post_pago": r.get("post_pago"),
+        "aviso": aviso,
     }
 
 
